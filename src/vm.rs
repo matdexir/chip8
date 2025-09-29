@@ -1,5 +1,5 @@
 use std::usize;
-use rand::random();
+use rand::random;
 
 const RAM_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
@@ -76,11 +76,18 @@ impl Chip8VM {
         self.sound_timer = 0;
     }
 
+    pub fn load(&mut self, data: &[u8]) {
+        let start = START_ADDR as usize;
+        let end = (START_ADDR as usize) + data.len();
+        self.memory[start..end].copy_from_slice(data);
+    }
+
     pub fn tick(&mut self) {
         // FETCH
         let op = self.fetch();
         // DECODE
         // EXECUTE
+        self.execute(op);
     }
 
     pub fn tick_timers(&mut self) {
@@ -94,6 +101,14 @@ impl Chip8VM {
             }
             self.sound_timer -= 1;
         }
+    }
+
+    pub fn get_display(&self) -> &[bool] {
+       return &self.screen;
+    }
+
+    pub fn keypress(&mut self, idx: usize, pressed: bool) {
+        self.keys[idx] = pressed;
     }
 
     fn fetch(&mut self) -> u16 {
