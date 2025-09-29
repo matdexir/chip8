@@ -377,6 +377,56 @@ impl Chip8VM {
                 self.sound_timer = self.registers[x];
             }
 
+            // I += VX: 0xFX1E
+            (0xF, _, 1, 0xE) => {
+                let x = d2 as usize;
+                self.i_register = self.i_register.wrapping_add(self.registers[x] as u16) 
+            }
+
+            // I = FONT: 0xFX29
+            (0xF, _, 2, 9) => {
+                let x = d2 as usize;
+                let c = self.registers[x] as u16;
+                self.i_register = c * 5;
+            }
+
+            // I = BCD of  VX: 0xFX33
+            // BCD = Binary Coded Decimal
+            (0xF,_, 3, 3) => {
+                let x = d2 as usize;
+                let vx = self.registers[x] as f32;
+
+                let hundreds = (vx / 100.0).floor() as u8;
+
+                let tens = ((vx / 10.0) % 10.0).floor() as u8;
+
+                let ones = (vx / 10.0) as u8;
+
+                self.memory[self.i_register as usize] = hundreds;
+                self.memory[(self.i_register + 1) as usize] = tens;
+                self.memory[(self.i_register + 2) as usize] = ones;
+
+           }
+            // STORE V0 to VX: 0xFX55
+            (0xF, _, 5, 5) => {
+                let x = d2 as usize;
+                let i = self.i_register as usize;
+
+                for idx in 0..=x {
+                    self.memory[i + idx] = self.registers[idx];
+                }
+            }
+
+            // LOAD V0 to VX: 0xFX65
+            (0xF, _, 6, 5) => {
+                let x = d2 as usize;
+                let i = self.i_register as usize;
+
+                for idx in 0..=x{
+                    self.registers[idx] = self.memory[i + idx];
+                }
+            }
+
             (_, _, _, _) => unimplemented!("Unimplemented opcode: {}", op),
         }
     }
