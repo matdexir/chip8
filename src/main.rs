@@ -1,4 +1,5 @@
 mod vm;
+use anyhow::{bail, Context, Result};
 use raylib::prelude::*;
 use std::{collections::HashMap, env, fs::File, io::Read};
 
@@ -9,7 +10,16 @@ const WINDOW_WIDTH: i32 = (SCREEN_WIDTH as i32) * SCALE;
 const WINDOW_HEIGHT: i32 = (SCREEN_HEIGHT as i32) * SCALE;
 const TICK_PER_FRAME: usize = 10;
 
+// The main entry point calls run and handles any top-level error.
 fn main() {
+    // If run() returns an Err, we print the error chain to the console.
+    if let Err(e) = run() {
+        eprintln!("Application Error: {:?}", e);
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     let keytobtn: HashMap<KeyboardKey, u8> = HashMap::from([
         (KeyboardKey::KEY_ONE, 0x1),
         (KeyboardKey::KEY_TWO, 0x2),
@@ -32,15 +42,24 @@ fn main() {
     let args: Vec<_> = env::args().collect();
 
     if args.len() != 2 {
-        println!("usage: cargo run path/to/rom");
-        return;
+        bail!("Usage: cargo run -- <path/to/rom>. Please provide the path to a ROM file.");
     }
 
-    let mut chip8 = Chip8VM::new();
-    let mut rom = File::open(&args[1]).expect("Unable to open file");
+    let rom_path = &args[1];
+
+    let mut rom =
+        File::open(rom_path).context(format!("Failed to open ROM file at path: {}", rom_path))?;
+
     let mut buffer = Vec::new();
-    rom.read_to_end(&mut buffer).unwrap();
-    chip8.load(&buffer);
+
+    rom.read_to_end(&mut buffer)
+        .context("Failed to read ROM file content")?;
+
+    let mut chip8 = Chip8VM::new();
+
+    chip8
+        .load(&buffer)
+        .context("Failed to load ROM data into VM memory")?;
 
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -48,24 +67,38 @@ fn main() {
         .build();
 
     rl.set_target_fps(30);
+
+    // Main emulation loop
     while !rl.window_should_close() {
+        // Input handling
         for (keyboard_key, chip8_key) in &keytobtn {
+            let key_index = *chip8_key as usize;
+
             if rl.is_key_down(*keyboard_key) {
-                chip8.keypress(*chip8_key as usize, true);
+                if let Err(e) = chip8.keypress(key_index, true) {
+                    eprintln!("Input error (down): {}", e);
+                }
             } else if rl.is_key_up(*keyboard_key) {
-                chip8.keypress(*chip8_key as usize, false);
+                if let Err(e) = chip8.keypress(key_index, false) {
+                    eprintln!("Input error (up): {}", e);
+                }
             }
         }
 
+        // VM Ticks
         for _ in 0..TICK_PER_FRAME {
-            chip8.tick();
+            chip8.tick()?;
         }
+
+        // Timer update
         chip8.tick_timers();
 
+        // Drawing
         let mut d = rl.begin_drawing(&thread);
 
         d.clear_background(Color::WHITE);
         let screen_buf = chip8.get_display();
+
         for (i, pixel) in screen_buf.iter().enumerate() {
             if *pixel {
                 let x = (i % SCREEN_WIDTH) as i32;
@@ -75,4 +108,7 @@ fn main() {
             }
         }
     }
+
+    // Successful exit
+    Ok(())
 }
