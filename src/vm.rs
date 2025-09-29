@@ -1,4 +1,5 @@
 use std::usize;
+use rand::random();
 
 const RAM_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
@@ -233,6 +234,147 @@ impl Chip8VM {
                 let (new_vx, borrow) = self.registers[x].overflowing_sub(self.registers[y]);
                 self.registers[x] = new_vx;
                 self.registers[0xF] = if borrow { 0 } else { 1 };
+            }
+
+            // VX >>=1: 0x8XN6
+            // set VF to the dropped bit: LSB
+            (8, _, _, 6) => {
+                let x = d2 as usize;
+                let lsb = self.registers[x] & 0x1;
+                self.registers[x] >>= 1;
+                self.registers[0xF] = lsb;
+            }
+
+            // VX = VY - VX: 0x8XY7
+            // set VF(yes addr V[0xF]) to 0 if borrow else 1
+            (8, _, _, 7) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                let (new_vx, borrow) = self.registers[y].overflowing_sub(self.registers[x]);
+                self.registers[x] = new_vx;
+                self.registers[0xF] = if borrow { 0 } else { 1 };
+            }
+            // VX <<=1: 0x8XNE
+            // set VF to the dropped bit: MSB
+            (8, _, _, 0xE) => {
+                let x = d2 as usize;
+                let msb = (self.registers[x] >> 7) & 0x1;
+                self.registers[x] <<= 1;
+                self.registers[0xF] = msb;
+            }
+
+            // SKIP if VX != VY: 0x9XY0
+            (9, _, _, 0) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+                if self.registers[x] != self.registers[y] {
+                    self.pc += 2;
+                }
+            }
+            // I = NNN: 0xANNN
+            (0xA, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.i_register = nnn;
+            }
+            // JMP to V0 + NNN: 0xBNNN
+            (0xB, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.pc = (self.registers[0] as u16) + nnn;
+            }
+
+            // VX = rand() & NN: 0xCXNN
+            (0xC, _, _, _) => {
+                let x = d2 as usize;
+                let nn = (op & 0xFF) as u8;
+                let rng: u8 = random();
+
+                self.registers[x] = rng & nn;
+            }
+
+            // DRAW sprite: 0xDNNN
+            (0xD, _, _, _) => {
+                let x_coord = self.registers[d2 as usize] as u16;
+                let y_coord = self.registers[d3 as usize] as u16;
+
+                let num_rows = d4;
+                let mut flipped = false;
+
+                for y_line in 0..num_rows {
+                    let addr  = self.i_register + y_line as u16;
+                    let pixels = self.memory[addr as usize];
+
+                    for x_line in 0..8 {
+                        if (pixels & (0b1000_0000 >> x_line) )!= 0 {
+                            let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+
+                            let idx = x + SCREEN_WIDTH * y;
+
+                            flipped != self.screen[idx];
+                            self.screen[idx] ^= true;
+                        }
+                    }
+                }
+
+                if flipped {
+                    self.registers[0xF] = 1;
+                } else {
+                    self.registers[0xF] = 0;
+                }
+            }
+
+            // SKIP KEY PRESS: 0xEX9E
+            (0xE, _, 9, 0xE) => {
+                let x = d2 as usize;
+                let vx = self.registers[x];
+                let key = self.keys[vx as usize];
+                if key {
+                    self.pc += 2;
+                }
+            }
+
+            // SKIP NOT KEY PRESS: 0xEX9E
+            (0xE, _, 0xA, 1) => {
+                let x = d2 as usize;
+                let vx = self.registers[x];
+                let key = self.keys[vx as usize];
+                if !key {
+                    self.pc += 2;
+                }
+            }
+            // VX = DT: 0xFX07
+            (0xF, _, 0, 7) => {
+                let x = d2 as usize;
+                self.registers[x] = self.delay_timer;
+            }
+            // WAIT KEY: 0xFX0A
+            (0xF, _, 0, 0xA) => {
+                let x = d2 as usize;
+                let mut pressed = false;
+                for i in 0..self.keys.len() {
+                    if self.keys[i] {
+                        self.registers[x] = i as u8;
+                        pressed = true
+                        break;
+                    }
+                }
+
+                if !pressed {
+                    self.pc -=2;
+                }
+            }
+
+            // DT = VX: 0xFX15
+            (0xF, _, 1, 5) => {
+                let x = d2 as usize;
+                self.delay_timer = self.registers[x];
+            }
+
+            // ST = VX: 0xFX18
+            (0xF, _, 1, 8) => {
+                let x = d2 as usize;
+                self.sound_timer = self.registers[x];
             }
 
             (_, _, _, _) => unimplemented!("Unimplemented opcode: {}", op),
