@@ -1,3 +1,4 @@
+mod vm;
 use raylib::prelude::*;
 
 fn main() {
