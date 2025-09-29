@@ -1,3 +1,5 @@
+use std::usize;
+
 const RAM_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
 const STACK_SIZE: usize = 16;
@@ -101,6 +103,140 @@ impl Chip8VM {
         self.pc += 2;
 
         return op;
+    }
+
+    fn execute(&mut self, op: u16) {
+        let d1 = (op & 0xF000) >> 12;
+        let d2 = (op & 0x0F00) >> 8;
+        let d3 = (op & 0x00F0) >> 4;
+        let d4 = op & 0x000F;
+
+        match (d1, d2, d3, d4) {
+            // NOP
+            (0, 0, 0, 0) => return,
+
+            // CLS: 0x00E0
+            (0, 0, 0xE, 0) => self.screen = [false; SCREEN_WIDTH * SCREEN_HEIGHT],
+
+            // RET: 0x00EE
+            (0, 0, 0xE, 0xE) => {
+                let ret = self.pop_from_stack();
+                self.pc = ret;
+            }
+
+            // JMP NNN: 0x1NNN
+            (1, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.pc = nnn;
+            }
+
+            // CALL NNN: 0x2NNN
+            (2, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.push_to_stack(self.pc);
+                self.pc = nnn;
+            }
+            // SKIP VX == NN: 0x3XNN
+            (3, _, _, _) => {
+                let x = d2 as usize;
+                let nn = (op & 0xFF) as u8;
+
+                if self.registers[x] == nn {
+                    self.pc += 2;
+                }
+            }
+
+            // SKIP VX == NN: 0x4XNN
+            (4, _, _, _) => {
+                let x = d2 as usize;
+                let nn = (op & 0xFF) as u8;
+
+                if self.registers[x] != nn {
+                    self.pc += 2;
+                }
+            }
+
+            // SKIP VX == VY: 0x5XY0
+            (5, _, _, 0) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                if self.registers[x] == self.registers[y] {
+                    self.pc += 2;
+                }
+            }
+
+            // VX = NN: 0x6XNN
+            (6, _, _, _) => {
+                let x = d2 as usize;
+                let nn = (op & 0xFF) as u8;
+
+                self.registers[x] = nn;
+            }
+
+            // VX += NN: 0x7XNN
+            (7, _, _, _) => {
+                let x = d2 as usize;
+                let nn = (op & 0xFF) as u8;
+
+                self.registers[x] = self.registers[x].wrapping_add(nn);
+            }
+            // VX = VY: 0x8XY0
+            (8, _, _, 0) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                self.registers[x] = self.registers[y];
+            }
+
+            // VX |= VY: 0x8XY1
+            (8, _, _, 1) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                self.registers[x] |= self.registers[y];
+            }
+
+            // VX &= VY: 0x8XY2
+            (8, _, _, 2) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                self.registers[x] &= self.registers[y];
+            }
+
+            // VX ^= VY: 0x8XY3
+            (8, _, _, 3) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                self.registers[x] ^= self.registers[y];
+            }
+
+            // VX += VY: 0x8XY4
+            // set VF(yes addr V[0xF]) to 1 if carry else 0
+            (8, _, _, 4) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                let (new_vx, carry) = self.registers[x].overflowing_add(self.registers[y]);
+                self.registers[x] = new_vx;
+                self.registers[0xF] = if carry { 1 } else { 0 };
+            }
+
+            // VX -= VY: 0x8XY5
+            // set VF(yes addr V[0xF]) to 0 if borrow else 1
+            (8, _, _, 5) => {
+                let x = d2 as usize;
+                let y = d3 as usize;
+
+                let (new_vx, borrow) = self.registers[x].overflowing_sub(self.registers[y]);
+                self.registers[x] = new_vx;
+                self.registers[0xF] = if borrow { 0 } else { 1 };
+            }
+
+            (_, _, _, _) => unimplemented!("Unimplemented opcode: {}", op),
+        }
     }
 
     fn push_to_stack(self: &mut Self, val: u16) {
