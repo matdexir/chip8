@@ -73,6 +73,36 @@ impl Chip8VM {
         self.sound_timer = 0;
     }
 
+    pub fn tick(&mut self) {
+        // FETCH
+        let op = self.fetch();
+        // DECODE
+        // EXECUTE
+    }
+
+    pub fn tick_timers(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            if self.sound_timer == 1 {
+                // BEEP
+            }
+            self.sound_timer -= 1;
+        }
+    }
+
+    fn fetch(&mut self) -> u16 {
+        let hi = self.memory[self.pc as usize] as u16;
+        let lo = self.memory[(self.pc + 1) as usize] as u16;
+
+        let op = (hi << 8) | lo;
+        self.pc += 2;
+
+        return op;
+    }
+
     fn push_to_stack(self: &mut Self, val: u16) {
         self.stack[self.sp as usize] = val;
         self.sp += 1;
