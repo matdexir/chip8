@@ -1,5 +1,5 @@
-use std::usize;
 use rand::random;
+use std::usize;
 
 const RAM_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
@@ -104,7 +104,7 @@ impl Chip8VM {
     }
 
     pub fn get_display(&self) -> &[bool] {
-       return &self.screen;
+        return &self.screen;
     }
 
     pub fn keypress(&mut self, idx: usize, pressed: bool) {
@@ -316,17 +316,17 @@ impl Chip8VM {
                 let mut flipped = false;
 
                 for y_line in 0..num_rows {
-                    let addr  = self.i_register + y_line as u16;
+                    let addr = self.i_register + y_line as u16;
                     let pixels = self.memory[addr as usize];
 
                     for x_line in 0..8 {
-                        if (pixels & (0b1000_0000 >> x_line) )!= 0 {
+                        if (pixels & (0b1000_0000 >> x_line)) != 0 {
                             let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
                             let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
 
                             let idx = x + SCREEN_WIDTH * y;
 
-                            flipped != self.screen[idx];
+                            flipped |= self.screen[idx];
                             self.screen[idx] ^= true;
                         }
                     }
@@ -370,13 +370,13 @@ impl Chip8VM {
                 for i in 0..self.keys.len() {
                     if self.keys[i] {
                         self.registers[x] = i as u8;
-                        pressed = true
+                        pressed = true;
                         break;
                     }
                 }
 
                 if !pressed {
-                    self.pc -=2;
+                    self.pc -= 2;
                 }
             }
 
@@ -395,7 +395,7 @@ impl Chip8VM {
             // I += VX: 0xFX1E
             (0xF, _, 1, 0xE) => {
                 let x = d2 as usize;
-                self.i_register = self.i_register.wrapping_add(self.registers[x] as u16) 
+                self.i_register = self.i_register.wrapping_add(self.registers[x] as u16)
             }
 
             // I = FONT: 0xFX29
@@ -407,7 +407,7 @@ impl Chip8VM {
 
             // I = BCD of  VX: 0xFX33
             // BCD = Binary Coded Decimal
-            (0xF,_, 3, 3) => {
+            (0xF, _, 3, 3) => {
                 let x = d2 as usize;
                 let vx = self.registers[x] as f32;
 
@@ -420,8 +420,7 @@ impl Chip8VM {
                 self.memory[self.i_register as usize] = hundreds;
                 self.memory[(self.i_register + 1) as usize] = tens;
                 self.memory[(self.i_register + 2) as usize] = ones;
-
-           }
+            }
             // STORE V0 to VX: 0xFX55
             (0xF, _, 5, 5) => {
                 let x = d2 as usize;
@@ -437,7 +436,7 @@ impl Chip8VM {
                 let x = d2 as usize;
                 let i = self.i_register as usize;
 
-                for idx in 0..=x{
+                for idx in 0..=x {
                     self.registers[idx] = self.memory[i + idx];
                 }
             }
