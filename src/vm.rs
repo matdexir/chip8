@@ -1,5 +1,4 @@
 use rand::random;
-use std::usize;
 
 const RAM_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
