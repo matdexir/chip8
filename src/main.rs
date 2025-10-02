@@ -70,7 +70,7 @@ fn run(rom_path: &PathBuf) -> Result<()> {
         .title("Chip 8 EMU")
         .build();
 
-    rl.set_target_fps(30);
+    rl.set_target_fps(60);
 
     // Main emulation loop
     while !rl.window_should_close() {
