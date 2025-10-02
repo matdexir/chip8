@@ -93,7 +93,7 @@ impl Chip8VM {
         self.execute(op)
     }
 
-    pub fn tick_timers(&mut self) {
+    pub fn tick_timers(&mut self) -> (u8, u8) {
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
         }
@@ -104,6 +104,8 @@ impl Chip8VM {
             }
             self.sound_timer -= 1;
         }
+
+        return (self.delay_timer, self.sound_timer);
     }
 
     pub fn get_display(&self) -> &[bool] {
