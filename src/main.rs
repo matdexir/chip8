@@ -72,6 +72,9 @@ fn run(rom_path: &PathBuf) -> Result<()> {
 
     rl.set_target_fps(60);
 
+    let audio = raylib::core::audio::RaylibAudio::init_audio_device()?;
+    let beep = audio.new_sound("resources/beep.mp3")?;
+
     // Main emulation loop
     while !rl.window_should_close() {
         // Input handling
@@ -95,7 +98,10 @@ fn run(rom_path: &PathBuf) -> Result<()> {
         }
 
         // Timer update
-        chip8.tick_timers();
+        let (_, st) = chip8.tick_timers();
+        if st == 1 {
+            beep.play();
+        }
 
         // Drawing
         let mut d = rl.begin_drawing(&thread);
