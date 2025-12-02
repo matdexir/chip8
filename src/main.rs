@@ -10,7 +10,7 @@ use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 use crate::conf::{HI_RES_HEIGHT, HI_RES_WIDTH};
 use crate::vm::Chip8VM;
 
-const SCALE: i32 = 15;
+const SCALE: i32 = 10;
 const TICK_PER_FRAME: usize = 10;
 
 // This struct defines the command-line arguments using clap's derive API.
@@ -117,7 +117,9 @@ fn run(cli: &Cli) -> Result<()> {
         // Drawing
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::BLACK);
+
         let (screen_width, screen_height, screen_buf) = chip8.get_display_config();
+
         let x_offset = (window_width - (screen_width as i32) * SCALE) / 2;
         let y_offset = (window_height - (screen_height as i32) * SCALE) / 2;
 
