@@ -1,7 +1,7 @@
 use crate::{
     conf::{
-        FONTSET, FONTSET_SIZE, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT,
-        SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE, START_ADDR,
+        FLAG_COUNT, FONTSET, FONTSET_SIZE, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE,
+        REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE, START_ADDR,
     },
     extensions::{Extension, VmContext},
 };
@@ -23,6 +23,14 @@ pub struct CpuState {
     keys: [bool; KEYS_COUNT],
     delay_timer: u8,
     sound_timer: u8,
+    // S-CHIP specific
+    rpl_flags: [u8; FLAG_COUNT],
+}
+
+impl Default for CpuState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CpuState {
@@ -40,6 +48,7 @@ impl CpuState {
             keys: [false; KEYS_COUNT],
             delay_timer: 0,
             sound_timer: 0,
+            rpl_flags: [0; FLAG_COUNT],
         }
     }
     fn get_context(&mut self) -> VmContext<'_> {
@@ -56,6 +65,7 @@ impl CpuState {
             sound_timer: &mut self.sound_timer,
             current_width: &mut self.current_width,
             current_height: &mut self.current_height,
+            rpl_flags: &mut self.rpl_flags,
         }
     }
     pub fn reset(&mut self) {
@@ -72,6 +82,7 @@ impl CpuState {
         self.delay_timer = 0;
         self.sound_timer = 0;
         self.memory[..FONTSET_SIZE].copy_from_slice(&FONTSET);
+        self.rpl_flags.fill(0);
     }
 }
 
