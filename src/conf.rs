@@ -3,8 +3,13 @@ pub const REGISTER_COUNT: usize = 16;
 pub const STACK_SIZE: usize = 16;
 pub const KEYS_COUNT: usize = 16;
 
+// Base CHIP-8 Resolution
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
+
+// S-CHIP Resolution
+pub const HI_RES_WIDTH: usize = 128;
+pub const HI_RES_HEIGHT: usize = 64;
 
 pub const START_ADDR: u16 = 0x200;
 
