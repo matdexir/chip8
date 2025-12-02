@@ -1,14 +1,21 @@
-use crate::conf::{
-    FONTSET, FONTSET_SIZE, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH,
-    STACK_SIZE, START_ADDR,
+use crate::{
+    conf::{
+        FONTSET, FONTSET_SIZE, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT,
+        SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE, START_ADDR,
+    },
+    extensions::{Extension, VmContext},
 };
 use anyhow::{bail, Result};
 use rand::random;
 
+const MAX_SCREEN_SIZE: usize = HI_RES_HEIGHT * HI_RES_WIDTH;
+
 pub struct Chip8VM {
     pc: u16,
     memory: [u8; RAM_SIZE],
-    screen: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
+    screen: [bool; MAX_SCREEN_SIZE],
+    current_width: usize,
+    current_height: usize,
     registers: [u8; REGISTER_COUNT],
     i_register: u16,
     sp: u16,
@@ -16,20 +23,24 @@ pub struct Chip8VM {
     keys: [bool; KEYS_COUNT],
     delay_timer: u8,
     sound_timer: u8,
+
+    extensions: Vec<Box<dyn Extension>>,
 }
 
 impl Default for Chip8VM {
     fn default() -> Self {
-        Self::new()
+        Self::new(Vec::new())
     }
 }
 
 impl Chip8VM {
-    pub fn new() -> Self {
+    pub fn new(mut extensions: Vec<Box<dyn Extension>>) -> Self {
         let mut chip8vm = Chip8VM {
             pc: START_ADDR,
             memory: [0; RAM_SIZE],
-            screen: [false; SCREEN_HEIGHT * SCREEN_WIDTH],
+            screen: [false; MAX_SCREEN_SIZE],
+            current_width: SCREEN_WIDTH,
+            current_height: SCREEN_HEIGHT,
             registers: [0; REGISTER_COUNT],
             i_register: 0,
             sp: 0,
@@ -37,15 +48,41 @@ impl Chip8VM {
             keys: [false; KEYS_COUNT],
             delay_timer: 0,
             sound_timer: 0,
+            extensions: Vec::new(),
         };
+        for mut ext in extensions.drain(..) {
+            let mut ctx = chip8vm.get_context();
+            ext.initialize(&mut ctx);
+            chip8vm.extensions.push(ext);
+        }
+
         chip8vm.reset();
         chip8vm
+    }
+
+    fn get_context<'a>(&mut self) -> VmContext<'_> {
+        VmContext {
+            pc: &mut self.pc,
+            registers: &mut self.registers,
+            i_register: &mut self.i_register,
+            stack: &mut self.stack,
+            sp: &mut self.sp,
+            memory: &mut self.memory,
+            screen: &mut self.screen,
+            keys: &mut self.keys,
+            delay_timer: &mut self.delay_timer,
+            sound_timer: &mut self.sound_timer,
+            current_width: &mut self.current_width,
+            current_height: &mut self.current_height,
+        }
     }
 
     pub fn reset(&mut self) {
         self.pc = START_ADDR;
         self.memory.fill(0);
         self.screen.fill(false);
+        self.current_width = SCREEN_WIDTH;
+        self.current_height = SCREEN_HEIGHT;
         self.registers.fill(0);
         self.i_register = 0;
         self.sp = 0;
@@ -88,8 +125,8 @@ impl Chip8VM {
         (self.delay_timer, self.sound_timer)
     }
 
-    pub fn get_display(&self) -> &[bool] {
-        &self.screen
+    pub fn get_display_config(&self) -> (usize, usize, &[bool]) {
+        (self.current_width, self.current_height, &self.screen)
     }
 
     pub fn keypress(&mut self, idx: usize, pressed: bool) -> Result<()> {
@@ -109,6 +146,18 @@ impl Chip8VM {
     }
 
     fn execute(&mut self, op: u16) -> Result<()> {
+        {
+            /*
+                        let mut ctx = self.get_context();
+                        for extension in self.extensions.iter_mut() {
+                            if extension.is_active() {
+                                if extension.handle_instruction(&mut ctx, op)? {
+                                    return Ok(());
+                                }
+                            }
+                        }
+            */
+        }
         let d1 = (op & 0xF000) >> 12;
         let d2 = ((op & 0x0F00) >> 8) as u8;
         let d3 = ((op & 0x00F0) >> 4) as u8;
@@ -121,7 +170,16 @@ impl Chip8VM {
             (0, 0, 0, 0) => (),
 
             // CLS: 0x00E0
-            (0, 0, 0xE, 0) => self.screen.fill(false),
+            (0, 0, 0xE, 0) => {
+                let current_w = self.current_width;
+                let current_h = self.current_height;
+
+                for y in 0..current_h {
+                    for x in 0..current_w {
+                        self.screen[x + y * HI_RES_WIDTH] = false;
+                    }
+                }
+            }
 
             // RET: 0x00EE
             (0, 0, 0xE, 0xE) => self.pc = self.pop_from_stack()?,
@@ -233,6 +291,8 @@ impl Chip8VM {
                 self.registers[0xF] = 0;
                 let x_coord = self.registers[x] as usize;
                 let y_coord = self.registers[y] as usize;
+                let screen_width = self.current_width;
+                let screen_height = self.current_height;
 
                 for y_line in 0..n as usize {
                     let addr = self.i_register as usize + y_line;
@@ -244,9 +304,9 @@ impl Chip8VM {
 
                     for x_line in 0..8 {
                         if (pixels & (0b1000_0000 >> x_line)) != 0 {
-                            let px = (x_coord + x_line) % SCREEN_WIDTH;
-                            let py = (y_coord + y_line) % SCREEN_HEIGHT;
-                            let idx = px + py * SCREEN_WIDTH;
+                            let px = (x_coord + x_line) % screen_width;
+                            let py = (y_coord + y_line) % screen_height;
+                            let idx = px + py * HI_RES_WIDTH;
                             if self.screen[idx] {
                                 self.registers[0xF] = 1;
                             }
