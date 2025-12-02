@@ -105,6 +105,21 @@ impl Extension for SuperChip8 {
                 self.draw_16x16_sprite(ctx, x, y)?;
                 Ok(true)
             }
+            (0xF, _, 7, 5) => {
+                for i in 0..=x {
+                    ctx.rpl_flags[i] = ctx.registers[i];
+                }
+                *ctx.pc += 2;
+                Ok(true)
+            }
+
+            (0xF, _, 8, 5) => {
+                for i in 0..=x {
+                    ctx.registers[i] = ctx.rpl_flags[i];
+                }
+                *ctx.pc += 2;
+                Ok(true)
+            }
             // TODO:  currently missing FX75, FX85 see https://chip-8.github.io/extensions/#super-chip-10
             _ => Ok(false),
         }
