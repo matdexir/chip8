@@ -1,4 +1,5 @@
 mod conf;
+mod extensions;
 mod vm;
 
 use anyhow::{Context, Result};
@@ -6,12 +7,10 @@ use clap::Parser;
 use raylib::prelude::*;
 use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
-use crate::conf::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::conf::{HI_RES_HEIGHT, HI_RES_WIDTH};
 use crate::vm::Chip8VM;
 
 const SCALE: i32 = 15;
-const WINDOW_WIDTH: i32 = (SCREEN_WIDTH as i32) * SCALE;
-const WINDOW_HEIGHT: i32 = (SCREEN_HEIGHT as i32) * SCALE;
 const TICK_PER_FRAME: usize = 10;
 
 // This struct defines the command-line arguments using clap's derive API.
@@ -20,19 +19,25 @@ const TICK_PER_FRAME: usize = 10;
 struct Cli {
     /// Path to the CHIP-8 ROM file to load
     rom_path: PathBuf,
+
+    #[arg(short = 's', long)]
+    enable_schip: bool,
+
+    #[arg(short = 'x', long)]
+    enable_xochip: bool,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    if let Err(e) = run(&cli.rom_path) {
+    if let Err(e) = run(&cli) {
         eprintln!("Application Error: {:?}", e);
         std::process::exit(1);
     }
 }
 
 // The run function now accepts the validated ROM path as an argument.
-fn run(rom_path: &PathBuf) -> Result<()> {
+fn run(cli: &Cli) -> Result<()> {
     let keytobtn: HashMap<KeyboardKey, u8> = HashMap::from([
         (KeyboardKey::KEY_ONE, 0x1),
         (KeyboardKey::KEY_TWO, 0x2),
@@ -51,26 +56,29 @@ fn run(rom_path: &PathBuf) -> Result<()> {
         (KeyboardKey::KEY_C, 0xB),
         (KeyboardKey::KEY_V, 0xF),
     ]);
+    let mut extensions = Vec::new();
 
-    // 1. Load ROM file using the provided PathBuf
-    let mut rom =
-        File::open(rom_path).context(format!("Failed to open ROM file: {}", rom_path.display()))?;
+    let mut rom = File::open(&cli.rom_path).context(format!(
+        "Failed to open ROM file: {}",
+        &cli.rom_path.display()
+    ))?;
 
     let mut buffer = Vec::new();
     rom.read_to_end(&mut buffer)
         .context("Failed to read ROM file content")?;
 
-    let mut chip8 = Chip8VM::new();
+    let mut chip8 = Chip8VM::new(extensions);
 
-    // 2. Load ROM into VM
     chip8
         .load(&buffer)
         .context("Failed to load ROM data into VM memory")?;
 
-    // 3. Initialize Raylib window
+    let window_width = (HI_RES_WIDTH as i32) * SCALE;
+    let window_height = (HI_RES_HEIGHT as i32) * SCALE;
+
     let (mut rl, thread) = raylib::init()
-        .size(WINDOW_WIDTH, WINDOW_HEIGHT)
-        .title("Chip 8 EMU")
+        .size(window_width, window_height)
+        .title("Chip 8 EMU(Extensible)")
         .build();
 
     rl.set_target_fps(120);
@@ -108,17 +116,35 @@ fn run(rom_path: &PathBuf) -> Result<()> {
 
         // Drawing
         let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::WHITE);
-        let screen_buf = chip8.get_display();
+        d.clear_background(Color::BLACK);
+        let (screen_width, screen_height, screen_buf) = chip8.get_display_config();
+        let x_offset = (window_width - (screen_width as i32) * SCALE) / 2;
+        let y_offset = (window_height - (screen_height as i32) * SCALE) / 2;
 
-        for (i, pixel) in screen_buf.iter().enumerate() {
-            if *pixel {
-                let x = (i % SCREEN_WIDTH) as i32;
-                let y = (i / SCREEN_WIDTH) as i32;
+        for y in 0..screen_height {
+            for x in 0..screen_width {
+                let idx = x + y * HI_RES_WIDTH;
 
-                d.draw_rectangle(x * SCALE, y * SCALE, SCALE, SCALE, Color::BLACK);
+                if screen_buf[idx] {
+                    d.draw_rectangle(
+                        x_offset + (x as i32) * SCALE,
+                        y_offset + (y as i32) * SCALE,
+                        SCALE,
+                        SCALE,
+                        Color::GREEN,
+                    );
+                }
             }
         }
+
+        let screen_rect = Rectangle::new(
+            x_offset as f32,
+            y_offset as f32,
+            (screen_width as i32 * SCALE) as f32,
+            (screen_height as i32 * SCALE) as f32,
+        );
+
+        d.draw_rectangle_lines_ex(screen_rect, 2.0, Color::GRAY);
     }
 
     Ok(())
