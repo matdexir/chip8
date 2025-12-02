@@ -18,6 +18,12 @@ pub struct Chip8VM {
     sound_timer: u8,
 }
 
+impl Default for Chip8VM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Chip8VM {
     pub fn new() -> Self {
         let mut chip8vm = Chip8VM {
