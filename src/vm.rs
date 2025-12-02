@@ -29,7 +29,7 @@ pub struct Chip8VM {
 
 impl Default for Chip8VM {
     fn default() -> Self {
-        Self::new(vec![])
+        Self::new(Vec::new())
     }
 }
 
@@ -129,10 +129,6 @@ impl Chip8VM {
         (self.current_width, self.current_height, &self.screen)
     }
 
-    pub fn get_display(&self) -> &[bool] {
-        &self.screen
-    }
-
     pub fn keypress(&mut self, idx: usize, pressed: bool) -> Result<()> {
         if idx >= KEYS_COUNT {
             bail!("Invalid key index: {}", idx);
@@ -174,7 +170,16 @@ impl Chip8VM {
             (0, 0, 0, 0) => (),
 
             // CLS: 0x00E0
-            (0, 0, 0xE, 0) => self.screen.fill(false),
+            (0, 0, 0xE, 0) => {
+                let current_w = self.current_width;
+                let current_h = self.current_height;
+
+                for y in 0..current_h {
+                    for x in 0..current_w {
+                        self.screen[x + y * HI_RES_WIDTH] = false;
+                    }
+                }
+            }
 
             // RET: 0x00EE
             (0, 0, 0xE, 0xE) => self.pc = self.pop_from_stack()?,
@@ -286,6 +291,8 @@ impl Chip8VM {
                 self.registers[0xF] = 0;
                 let x_coord = self.registers[x] as usize;
                 let y_coord = self.registers[y] as usize;
+                let screen_width = self.current_width;
+                let screen_height = self.current_height;
 
                 for y_line in 0..n as usize {
                     let addr = self.i_register as usize + y_line;
@@ -297,9 +304,9 @@ impl Chip8VM {
 
                     for x_line in 0..8 {
                         if (pixels & (0b1000_0000 >> x_line)) != 0 {
-                            let px = (x_coord + x_line) % SCREEN_WIDTH;
-                            let py = (y_coord + y_line) % SCREEN_HEIGHT;
-                            let idx = px + py * SCREEN_WIDTH;
+                            let px = (x_coord + x_line) % screen_width;
+                            let py = (y_coord + y_line) % screen_height;
+                            let idx = px + py * HI_RES_WIDTH;
                             if self.screen[idx] {
                                 self.registers[0xF] = 1;
                             }
