@@ -1,6 +1,6 @@
 use crate::conf::{
-    HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH,
-    STACK_SIZE,
+    FLAG_COUNT, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT,
+    SCREEN_WIDTH, STACK_SIZE,
 };
 use anyhow::{bail, Result};
 
@@ -19,6 +19,8 @@ pub struct VmContext<'a> {
 
     pub current_width: &'a mut usize,
     pub current_height: &'a mut usize,
+    // S-CHIP specific
+    pub rpl_flags: &'a mut [u8; FLAG_COUNT],
 }
 
 pub trait Extension {
