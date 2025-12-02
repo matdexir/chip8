@@ -1,35 +1,9 @@
+use crate::conf::{
+    FONTSET, FONTSET_SIZE, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH,
+    STACK_SIZE, START_ADDR,
+};
 use anyhow::{bail, Result};
 use rand::random;
-
-const RAM_SIZE: usize = 4096;
-const REGISTER_COUNT: usize = 16;
-const STACK_SIZE: usize = 16;
-const KEYS_COUNT: usize = 16;
-
-pub const SCREEN_WIDTH: usize = 64;
-pub const SCREEN_HEIGHT: usize = 32;
-
-const START_ADDR: u16 = 0x200;
-
-const FONTSET_SIZE: usize = 80;
-const FONTSET: [u8; FONTSET_SIZE] = [
-    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-    0x20, 0x60, 0x20, 0x20, 0x70, // 1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
-];
 
 pub struct Chip8VM {
     pc: u16,
@@ -42,6 +16,12 @@ pub struct Chip8VM {
     keys: [bool; KEYS_COUNT],
     delay_timer: u8,
     sound_timer: u8,
+}
+
+impl Default for Chip8VM {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Chip8VM {
@@ -105,7 +85,7 @@ impl Chip8VM {
             self.sound_timer -= 1;
         }
 
-        return (self.delay_timer, self.sound_timer);
+        (self.delay_timer, self.sound_timer)
     }
 
     pub fn get_display(&self) -> &[bool] {
