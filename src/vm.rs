@@ -85,7 +85,7 @@ impl Chip8VM {
             self.sound_timer -= 1;
         }
 
-        return (self.delay_timer, self.sound_timer);
+        (self.delay_timer, self.sound_timer)
     }
 
     pub fn get_display(&self) -> &[bool] {
