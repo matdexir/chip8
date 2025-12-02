@@ -1,4 +1,7 @@
-use crate::conf::{KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE};
+use crate::conf::{
+    HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH,
+    STACK_SIZE,
+};
 use anyhow::{bail, Result};
 
 pub struct VmContext<'a> {
@@ -9,7 +12,7 @@ pub struct VmContext<'a> {
     pub sp: &'a mut u16,
     pub memory: &'a mut [u8; RAM_SIZE],
 
-    pub screen: &'a mut [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
+    pub screen: &'a mut [bool; HI_RES_HEIGHT * HI_RES_WIDTH],
     pub keys: &'a [bool; KEYS_COUNT],
     pub delay_timer: &'a mut u8,
     pub sound_timer: &'a mut u8,
