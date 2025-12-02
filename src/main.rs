@@ -1,10 +1,13 @@
+mod conf;
 mod vm;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use raylib::prelude::*;
 use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
-use crate::vm::{Chip8VM, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::conf::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::vm::Chip8VM;
 
 const SCALE: i32 = 15;
 const WINDOW_WIDTH: i32 = (SCREEN_WIDTH as i32) * SCALE;
@@ -70,7 +73,7 @@ fn run(rom_path: &PathBuf) -> Result<()> {
         .title("Chip 8 EMU")
         .build();
 
-    rl.set_target_fps(60);
+    rl.set_target_fps(120);
 
     let audio = raylib::core::audio::RaylibAudio::init_audio_device()?;
     let beep = audio.new_sound("resources/beep.mp3")?;
