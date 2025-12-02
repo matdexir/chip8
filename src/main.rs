@@ -1,5 +1,6 @@
 mod conf;
 mod extensions;
+mod superchip;
 mod vm;
 
 use anyhow::{Context, Result};
@@ -8,6 +9,8 @@ use raylib::prelude::*;
 use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
 use crate::conf::{HI_RES_HEIGHT, HI_RES_WIDTH};
+use crate::extensions::Extension;
+use crate::superchip::SuperChip8;
 use crate::vm::Chip8VM;
 
 const SCALE: i32 = 10;
@@ -57,6 +60,9 @@ fn run(cli: &Cli) -> Result<()> {
         (KeyboardKey::KEY_V, 0xF),
     ]);
     let mut extensions = Vec::new();
+    if cli.enable_schip {
+        extensions.push(Box::new(SuperChip8::new(true)) as Box<dyn Extension>);
+    }
 
     let mut rom = File::open(&cli.rom_path).context(format!(
         "Failed to open ROM file: {}",
