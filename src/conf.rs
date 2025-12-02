@@ -11,6 +11,9 @@ pub const SCREEN_HEIGHT: usize = 32;
 pub const HI_RES_WIDTH: usize = 128;
 pub const HI_RES_HEIGHT: usize = 64;
 
+// S-CHIP Specific
+pub const FLAG_COUNT: usize = 16;
+
 pub const START_ADDR: u16 = 0x200;
 
 pub const FONTSET_SIZE: usize = 80;
