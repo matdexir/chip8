@@ -1,7 +1,9 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Ok, Result};
 
 use crate::{
-    conf::{HI_RES_HEIGHT, HI_RES_WIDTH, RAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH},
+    conf::{
+        HI_RES_HEIGHT, HI_RES_WIDTH, LARGE_FONT_BASE_ADDR, RAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH,
+    },
     extensions::{Extension, VmContext},
 };
 
@@ -101,26 +103,52 @@ impl Extension for SuperChip8 {
                 *ctx.current_height = HI_RES_HEIGHT;
                 Ok(true)
             }
+            // 0DXY0:
             (0xD, _, _, 0) => {
                 self.draw_16x16_sprite(ctx, x, y)?;
                 Ok(true)
             }
+            // TODO:  see https://chip-8.github.io/extensions/#super-chip-10
+            /*
+                        // 00CN: scroll down n
+                        (0, 0, 0xC, _) => {
+                            ctx.screen.fill(false);
+                            Ok(true)
+                        }
+                        // 00FB: scroll right 4 pixels
+                        (0, 0, 0xF, 0xB) => {
+                            ctx.screen.fill(false);
+                            Ok(true)
+                        }
+                        // 00FC: scroll left 4 pixels
+                        (0, 0, 0xF, 0xC) => {
+                            ctx.screen.fill(false);
+                            Ok(true)
+                        }
+            */
+            // FX30: I = bighex based on VX
+            (0xF, _, 3, 0) => {
+                let c = ctx.registers[x] as u16;
+                *ctx.i_register = LARGE_FONT_BASE_ADDR + c * 10;
+                Ok(true)
+            }
+            // FX75:
             (0xF, _, 7, 5) => {
                 for i in 0..=x {
                     ctx.rpl_flags[i] = ctx.registers[i];
                 }
-                *ctx.pc += 2;
+                // *ctx.pc += 2;
                 Ok(true)
             }
 
+            // FX85:
             (0xF, _, 8, 5) => {
                 for i in 0..=x {
                     ctx.registers[i] = ctx.rpl_flags[i];
                 }
-                *ctx.pc += 2;
+                // *ctx.pc += 2;
                 Ok(true)
             }
-            // TODO:  currently missing FX75, FX85 see https://chip-8.github.io/extensions/#super-chip-10
             _ => Ok(false),
         }
     }
