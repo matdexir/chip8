@@ -10,6 +10,7 @@ pub const SCREEN_HEIGHT: usize = 32;
 // S-CHIP Resolution
 pub const HI_RES_WIDTH: usize = 128;
 pub const HI_RES_HEIGHT: usize = 64;
+pub const LARGE_FONT_BASE_ADDR: u16 = 0x050;
 
 // S-CHIP Specific
 pub const FLAG_COUNT: usize = 16;
