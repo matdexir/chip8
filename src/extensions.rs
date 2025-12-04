@@ -1,8 +1,7 @@
 use crate::conf::{
-    FLAG_COUNT, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, SCREEN_HEIGHT,
-    SCREEN_WIDTH, STACK_SIZE,
+    FLAG_COUNT, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, STACK_SIZE,
 };
-use anyhow::{bail, Result};
+use anyhow::Result;
 
 pub struct VmContext<'a> {
     pub pc: &'a mut u16,
