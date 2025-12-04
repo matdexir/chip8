@@ -175,10 +175,8 @@ impl Chip8VM {
             let extensions = &mut self.extensions;
 
             for extension in extensions.iter_mut() {
-                if extension.is_active() {
-                    if extension.handle_instruction(&mut ctx, op)? {
-                        return Ok(());
-                    }
+                if extension.is_active() && extension.handle_instruction(&mut ctx, op)? {
+                    return Ok(());
                 }
             }
         }
