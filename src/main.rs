@@ -25,9 +25,10 @@ struct Cli {
 
     #[arg(short = 's', long)]
     enable_schip: bool,
-
+    /*
     #[arg(short = 'x', long)]
     enable_xochip: bool,
+    */
 }
 
 fn main() {
