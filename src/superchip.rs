@@ -109,23 +109,60 @@ impl Extension for SuperChip8 {
                 Ok(true)
             }
             // TODO:  see https://chip-8.github.io/extensions/#super-chip-10
-            /*
-                        // 00CN: scroll down n
-                        (0, 0, 0xC, _) => {
-                            ctx.screen.fill(false);
-                            Ok(true)
-                        }
-                        // 00FB: scroll right 4 pixels
-                        (0, 0, 0xF, 0xB) => {
-                            ctx.screen.fill(false);
-                            Ok(true)
-                        }
-                        // 00FC: scroll left 4 pixels
-                        (0, 0, 0xF, 0xC) => {
-                            ctx.screen.fill(false);
-                            Ok(true)
-                        }
-            */
+            // 00CN: scroll down n
+            (0, 0, 0xC, _) => {
+                let n = n as usize;
+                if n >= SCREEN_HEIGHT {
+                    ctx.screen.fill(false);
+                    return Ok(true);
+                }
+
+                let mut new_screen = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+
+                for row in 0..(SCREEN_HEIGHT - n) {
+                    let src_start = row * SCREEN_WIDTH;
+                    let dst_start = (row + n) * SCREEN_WIDTH;
+
+                    new_screen[dst_start..dst_start + SCREEN_WIDTH]
+                        .copy_from_slice(&ctx.screen[src_start..src_start + SCREEN_WIDTH]);
+                }
+                ctx.screen.copy_from_slice(&new_screen);
+                Ok(true)
+            }
+            // 00FB: scroll right 4 pixels
+            (0, 0, 0xF, 0xB) => {
+                const SHIFT: usize = 4;
+                let mut new_screen = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+
+                for row in 0..SCREEN_HEIGHT {
+                    let src_row_start = row * SCREEN_WIDTH;
+                    let dst_row_start = (row + 4) * SCREEN_HEIGHT;
+
+                    for col in 0..(SCREEN_WIDTH - SHIFT) {
+                        let src = src_row_start + col;
+                        let dst = dst_row_start + col + SHIFT;
+                        new_screen[dst] = ctx.screen[src];
+                    }
+                }
+                Ok(true)
+            }
+            // 00FC: scroll left 4 pixels
+            (0, 0, 0xF, 0xC) => {
+                const SHIFT: usize = 4;
+                let mut new_screen = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+
+                for row in 0..SCREEN_HEIGHT {
+                    let src_row_start = row * SCREEN_WIDTH;
+                    let dst_row_start = src_row_start;
+
+                    for col in 0..(SCREEN_WIDTH + SHIFT) {
+                        let src = src_row_start + col;
+                        let dst = dst_row_start + col - SHIFT;
+                        new_screen[dst] = ctx.screen[src];
+                    }
+                }
+                Ok(true)
+            }
             // FX30: I = bighex based on VX
             (0xF, _, 3, 0) => {
                 let c = ctx.registers[x] as u16;
