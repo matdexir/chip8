@@ -1,7 +1,8 @@
 use crate::{
     conf::{
         FLAG_COUNT, FONTSET, FONTSET_SIZE, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE,
-        REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE, START_ADDR,
+        REGISTER_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH, STACK_SIZE, START_ADDR, XO_RES_HEIGHT,
+        XO_RES_WIDTH,
     },
     extensions::{Extension, VmContext},
 };
@@ -9,6 +10,7 @@ use anyhow::{bail, Result};
 use rand::random;
 
 const MAX_SCREEN_SIZE: usize = HI_RES_HEIGHT * HI_RES_WIDTH;
+const XO_SCREEN_SIZE: usize = XO_RES_HEIGHT * XO_RES_WIDTH;
 
 pub struct CpuState {
     pc: u16,
@@ -25,6 +27,10 @@ pub struct CpuState {
     sound_timer: u8,
     // S-CHIP specific
     rpl_flags: [u8; FLAG_COUNT],
+    // XO-Chip specific
+    plane_1: [bool; XO_SCREEN_SIZE],
+    plane_2: [bool; XO_SCREEN_SIZE],
+    plane_mask: u8,
 }
 
 impl Default for CpuState {
@@ -49,6 +55,9 @@ impl CpuState {
             delay_timer: 0,
             sound_timer: 0,
             rpl_flags: [0; FLAG_COUNT],
+            plane_1: [false; XO_SCREEN_SIZE],
+            plane_2: [false; XO_SCREEN_SIZE],
+            plane_mask: 1,
         }
     }
     fn get_context(&mut self) -> VmContext<'_> {
@@ -66,6 +75,9 @@ impl CpuState {
             current_width: &mut self.current_width,
             current_height: &mut self.current_height,
             rpl_flags: &mut self.rpl_flags,
+            plane_1: &mut self.plane_1,
+            plane_2: &mut self.plane_2,
+            plane_mask: &mut self.plane_mask,
         }
     }
     pub fn reset(&mut self) {
@@ -83,6 +95,9 @@ impl CpuState {
         self.sound_timer = 0;
         self.memory[..FONTSET_SIZE].copy_from_slice(&FONTSET);
         self.rpl_flags.fill(0);
+        self.plane_1.fill(false);
+        self.plane_2.fill(false);
+        self.plane_mask = 1;
     }
 }
 
@@ -117,7 +132,7 @@ impl Chip8VM {
         let start = START_ADDR as usize;
         let end = start + data.len();
 
-        if end >= RAM_SIZE {
+        if end > RAM_SIZE {
             bail!("ROM size exceeds available memory.");
         }
 
@@ -151,6 +166,15 @@ impl Chip8VM {
             self.cpu.current_height,
             &self.cpu.screen,
         )
+    }
+
+    pub fn get_xo_planes(&self) -> Option<(&[bool; XO_SCREEN_SIZE], &[bool; XO_SCREEN_SIZE])> {
+        for extension in &self.extensions {
+            if extension.name() == "XO-Chip" && extension.is_active() {
+                return Some((&self.cpu.plane_1, &self.cpu.plane_2));
+            }
+        }
+        None
     }
 
     pub fn keypress(&mut self, idx: usize, pressed: bool) -> Result<()> {
@@ -457,5 +481,577 @@ impl Chip8VM {
         }
         self.cpu.sp -= 1;
         Ok(self.cpu.stack[self.cpu.sp as usize])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vm_initialization() {
+        let vm = Chip8VM::new(Vec::new());
+        assert_eq!(vm.cpu.pc, START_ADDR);
+        assert_eq!(vm.cpu.i_register, 0);
+        assert_eq!(vm.cpu.sp, 0);
+        assert!(vm.cpu.delay_timer == 0);
+        assert!(vm.cpu.sound_timer == 0);
+    }
+
+    #[test]
+    fn test_load_rom() {
+        let mut vm = Chip8VM::new(Vec::new());
+        let rom_data = vec![0x12, 0x34, 0x56, 0x78];
+        vm.load(&rom_data).unwrap();
+
+        let start = START_ADDR as usize;
+        assert_eq!(vm.cpu.memory[start], 0x12);
+        assert_eq!(vm.cpu.memory[start + 1], 0x34);
+        assert_eq!(vm.cpu.memory[start + 2], 0x56);
+        assert_eq!(vm.cpu.memory[start + 3], 0x78);
+    }
+
+    #[test]
+    fn test_load_rom_too_large() {
+        let mut vm = Chip8VM::new(Vec::new());
+        let rom_data = vec![0u8; 4000];
+        let result = vm.load(&rom_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nop() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0x00;
+        vm.cpu.memory[0x201] = 0x00;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_cls() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.screen[0] = true;
+        vm.cpu.screen[63] = true;
+        vm.cpu.memory[0x200] = 0x00;
+        vm.cpu.memory[0x201] = 0xE0;
+        vm.tick().unwrap();
+        assert!(!vm.cpu.screen[0]);
+        assert!(!vm.cpu.screen[63]);
+    }
+
+    #[test]
+    fn test_jmp() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0x12;
+        vm.cpu.memory[0x201] = 0x34;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x234);
+    }
+
+    #[test]
+    fn test_call_and_ret() {
+        let mut vm = Chip8VM::new(Vec::new());
+
+        vm.cpu.memory[0x200] = 0x22;
+        vm.cpu.memory[0x201] = 0x34;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x234);
+        assert_eq!(vm.cpu.sp, 1);
+        assert_eq!(vm.cpu.stack[0], 0x202);
+
+        vm.cpu.memory[0x234] = 0x00;
+        vm.cpu.memory[0x235] = 0xEE;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+        assert_eq!(vm.cpu.sp, 0);
+    }
+
+    #[test]
+    fn test_stack_overflow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0x22;
+        vm.cpu.memory[0x201] = 0x34;
+        for _ in 0..16 {
+            vm.cpu.pc = 0x200;
+            vm.tick().unwrap();
+        }
+        vm.cpu.pc = 0x200;
+        let result = vm.tick();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stack_underflow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0x00;
+        vm.cpu.memory[0x201] = 0xEE;
+        let result = vm.tick();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_skip_if_equal() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x42;
+
+        vm.cpu.memory[0x200] = 0x30;
+        vm.cpu.memory[0x201] = 0x42;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+
+        vm.cpu.pc = 0x200;
+        vm.cpu.memory[0x201] = 0x43;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_skip_if_not_equal() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x42;
+
+        vm.cpu.memory[0x200] = 0x40;
+        vm.cpu.memory[0x201] = 0x43;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+
+        vm.cpu.pc = 0x200;
+        vm.cpu.memory[0x201] = 0x42;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_skip_if_registers_equal() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x42;
+        vm.cpu.registers[1] = 0x42;
+
+        vm.cpu.memory[0x200] = 0x50;
+        vm.cpu.memory[0x201] = 0x10;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+
+        vm.cpu.pc = 0x200;
+        vm.cpu.registers[1] = 0x43;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_skip_if_registers_not_equal() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x42;
+        vm.cpu.registers[1] = 0x43;
+
+        vm.cpu.memory[0x200] = 0x90;
+        vm.cpu.memory[0x201] = 0x10;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+
+        vm.cpu.pc = 0x200;
+        vm.cpu.registers[1] = 0x42;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_set_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0x60;
+        vm.cpu.memory[0x201] = 0x42;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x42);
+    }
+
+    #[test]
+    fn test_add_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.memory[0x200] = 0x70;
+        vm.cpu.memory[0x201] = 0x20;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x30);
+    }
+
+    #[test]
+    fn test_add_register_overflow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0xF0;
+        vm.cpu.memory[0x200] = 0x70;
+        vm.cpu.memory[0x201] = 0x20;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x10);
+    }
+
+    #[test]
+    fn test_set_i_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0xA1;
+        vm.cpu.memory[0x201] = 0x23;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.i_register, 0x123);
+    }
+
+    #[test]
+    fn test_add_to_i_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.i_register = 0x100;
+        vm.cpu.registers[0] = 0x50;
+        vm.cpu.memory[0x200] = 0xF0;
+        vm.cpu.memory[0x201] = 0x1E;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.i_register, 0x150);
+    }
+
+    #[test]
+    fn test_add_to_i_register_overflow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.i_register = 0xFFF;
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.memory[0x200] = 0xF0;
+        vm.cpu.memory[0x201] = 0x1E;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.i_register, 0x100F);
+    }
+
+    #[test]
+    fn test_jump_v0_offset() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.memory[0x200] = 0xB2;
+        vm.cpu.memory[0x201] = 0x34;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x244);
+    }
+
+    #[test]
+    fn test_copy_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[1] = 0x42;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x10;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x42);
+    }
+
+    #[test]
+    fn test_or_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x0F;
+        vm.cpu.registers[1] = 0xF0;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x11;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0xFF);
+    }
+
+    #[test]
+    fn test_and_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0xFF;
+        vm.cpu.registers[1] = 0xF0;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x12;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0xF0);
+    }
+
+    #[test]
+    fn test_xor_register() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0xFF;
+        vm.cpu.registers[1] = 0xFF;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x13;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x00);
+    }
+
+    #[test]
+    fn test_add_registers_no_carry() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.registers[1] = 0x20;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x14;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x30);
+        assert_eq!(vm.cpu.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_add_registers_with_carry() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0xF0;
+        vm.cpu.registers[1] = 0x20;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x14;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x10);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_sub_registers_no_borrow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x20;
+        vm.cpu.registers[1] = 0x10;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x15;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x10);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_sub_registers_with_borrow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.registers[1] = 0x20;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x15;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0xF0);
+        assert_eq!(vm.cpu.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_shift_right() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0b1000_0001;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x16;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0b0100_0000);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_shift_left() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0b1000_0000;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x1E;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0b0000_0000);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_reverse_sub_no_borrow() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.registers[1] = 0x20;
+        vm.cpu.memory[0x200] = 0x80;
+        vm.cpu.memory[0x201] = 0x17;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x10);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_timer_operations() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x10;
+
+        vm.cpu.memory[0x200] = 0xF0;
+        vm.cpu.memory[0x201] = 0x15;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.delay_timer, 0x10);
+
+        vm.cpu.memory[0x202] = 0xF0;
+        vm.cpu.memory[0x203] = 0x18;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.sound_timer, 0x10);
+
+        vm.cpu.memory[0x204] = 0xF0;
+        vm.cpu.memory[0x205] = 0x07;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.registers[0], 0x10);
+    }
+
+    #[test]
+    fn test_tick_timers() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.delay_timer = 5;
+        vm.cpu.sound_timer = 3;
+
+        let (dt, st) = vm.tick_timers();
+        assert_eq!(dt, 4);
+        assert_eq!(st, 2);
+
+        let (dt, st) = vm.tick_timers();
+        assert_eq!(dt, 3);
+        assert_eq!(st, 1);
+    }
+
+    #[test]
+    fn test_bcd_conversion() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.i_register = 0x300;
+        vm.cpu.registers[0] = 123;
+
+        vm.cpu.memory[0x200] = 0xF0;
+        vm.cpu.memory[0x201] = 0x33;
+        vm.tick().unwrap();
+
+        assert_eq!(vm.cpu.memory[0x300], 1);
+        assert_eq!(vm.cpu.memory[0x301], 2);
+        assert_eq!(vm.cpu.memory[0x302], 3);
+    }
+
+    #[test]
+    fn test_store_registers() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.i_register = 0x300;
+        vm.cpu.registers[0] = 0x10;
+        vm.cpu.registers[1] = 0x20;
+        vm.cpu.registers[2] = 0x30;
+
+        vm.cpu.memory[0x200] = 0xF2;
+        vm.cpu.memory[0x201] = 0x55;
+        vm.tick().unwrap();
+
+        assert_eq!(vm.cpu.memory[0x300], 0x10);
+        assert_eq!(vm.cpu.memory[0x301], 0x20);
+        assert_eq!(vm.cpu.memory[0x302], 0x30);
+    }
+
+    #[test]
+    fn test_load_registers() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.i_register = 0x300;
+        vm.cpu.memory[0x300] = 0x10;
+        vm.cpu.memory[0x301] = 0x20;
+        vm.cpu.memory[0x302] = 0x30;
+
+        vm.cpu.memory[0x200] = 0xF2;
+        vm.cpu.memory[0x201] = 0x65;
+        vm.tick().unwrap();
+
+        assert_eq!(vm.cpu.registers[0], 0x10);
+        assert_eq!(vm.cpu.registers[1], 0x20);
+        assert_eq!(vm.cpu.registers[2], 0x30);
+    }
+
+    #[test]
+    fn test_font_address() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x0A;
+
+        vm.cpu.memory[0x200] = 0xF0;
+        vm.cpu.memory[0x201] = 0x29;
+        vm.tick().unwrap();
+
+        assert_eq!(vm.cpu.i_register, 50);
+    }
+
+    #[test]
+    fn test_key_press() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.keypress(0, true).unwrap();
+        assert!(vm.cpu.keys[0]);
+
+        vm.keypress(0, false).unwrap();
+        assert!(!vm.cpu.keys[0]);
+    }
+
+    #[test]
+    fn test_invalid_key_press() {
+        let mut vm = Chip8VM::new(Vec::new());
+        let result = vm.keypress(16, true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_skip_if_key_pressed() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 5;
+        vm.cpu.keys[5] = true;
+
+        vm.cpu.memory[0x200] = 0xE0;
+        vm.cpu.memory[0x201] = 0x9E;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+    }
+
+    #[test]
+    fn test_skip_if_key_not_pressed() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 5;
+        vm.cpu.keys[5] = false;
+
+        vm.cpu.memory[0x200] = 0xE0;
+        vm.cpu.memory[0x201] = 0xA1;
+        vm.tick().unwrap();
+        assert_eq!(vm.cpu.pc, 0x204);
+    }
+
+    #[test]
+    fn test_draw_sprite_no_collision() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0;
+        vm.cpu.registers[1] = 0;
+        vm.cpu.i_register = 0x320;
+        vm.cpu.memory[0x320] = 0x80;
+
+        vm.cpu.memory[0x200] = 0xD0;
+        vm.cpu.memory[0x201] = 0x01;
+        vm.tick().unwrap();
+
+        assert!(vm.cpu.screen[0]);
+        assert_eq!(vm.cpu.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_draw_sprite_with_collision() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0;
+        vm.cpu.registers[1] = 0;
+        vm.cpu.i_register = 0x320;
+        vm.cpu.memory[0x320] = 0x80;
+        vm.cpu.screen[0] = true;
+
+        vm.cpu.memory[0x200] = 0xD0;
+        vm.cpu.memory[0x201] = 0x01;
+        vm.tick().unwrap();
+
+        assert!(!vm.cpu.screen[0]);
+        assert_eq!(vm.cpu.registers[0xF], 1);
+    }
+
+    #[test]
+    fn test_invalid_opcode() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.memory[0x200] = 0xFF;
+        vm.cpu.memory[0x201] = 0xFF;
+        let result = vm.tick();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut vm = Chip8VM::new(Vec::new());
+        vm.cpu.registers[0] = 0x42;
+        vm.cpu.memory[0x300] = 0x12;
+        vm.cpu.screen[0] = true;
+
+        vm.cpu.reset();
+
+        assert_eq!(vm.cpu.pc, START_ADDR);
+        assert_eq!(vm.cpu.registers[0], 0);
+        assert_eq!(vm.cpu.memory[0x300], 0);
+        assert!(!vm.cpu.screen[0]);
+    }
+
+    #[test]
+    fn test_get_display_config() {
+        let vm = Chip8VM::new(Vec::new());
+        let (width, height, screen) = vm.get_display_config();
+        assert_eq!(width, SCREEN_WIDTH);
+        assert_eq!(height, SCREEN_HEIGHT);
+        assert_eq!(screen.len(), HI_RES_HEIGHT * HI_RES_WIDTH);
     }
 }

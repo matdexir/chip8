@@ -1,5 +1,6 @@
 use crate::conf::{
     FLAG_COUNT, HI_RES_HEIGHT, HI_RES_WIDTH, KEYS_COUNT, RAM_SIZE, REGISTER_COUNT, STACK_SIZE,
+    XO_RES_HEIGHT, XO_RES_WIDTH,
 };
 use anyhow::Result;
 
@@ -20,6 +21,10 @@ pub struct VmContext<'a> {
     pub current_height: &'a mut usize,
     // S-CHIP specific
     pub rpl_flags: &'a mut [u8; FLAG_COUNT],
+    // XO-Chip specific
+    pub plane_1: &'a mut [bool; XO_RES_HEIGHT * XO_RES_WIDTH],
+    pub plane_2: &'a mut [bool; XO_RES_HEIGHT * XO_RES_WIDTH],
+    pub plane_mask: &'a mut u8,
 }
 
 pub trait Extension {
