@@ -1,4 +1,4 @@
-pub const RAM_SIZE: usize = 4096;
+pub const RAM_SIZE: usize = 65536;
 pub const REGISTER_COUNT: usize = 16;
 pub const STACK_SIZE: usize = 16;
 pub const KEYS_COUNT: usize = 16;
@@ -11,6 +11,11 @@ pub const SCREEN_HEIGHT: usize = 32;
 pub const HI_RES_WIDTH: usize = 128;
 pub const HI_RES_HEIGHT: usize = 64;
 pub const LARGE_FONT_BASE_ADDR: u16 = 0x050;
+
+// XO-Chip Resolution
+pub const XO_RES_WIDTH: usize = 256;
+pub const XO_RES_HEIGHT: usize = 192;
+pub const XO_SCREEN_SIZE: usize = XO_RES_HEIGHT * XO_RES_WIDTH;
 
 // S-CHIP Specific
 pub const FLAG_COUNT: usize = 16;
