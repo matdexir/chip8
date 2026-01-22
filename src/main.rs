@@ -101,6 +101,7 @@ fn run_debugger_loop(
             Ok(DebugAction::ShowBreakpoints) => {
                 debugger.show_breakpoints();
             }
+            Ok(DebugAction::Help) => {}
             Err(e) => {
                 println!("Error: {}", e);
             }

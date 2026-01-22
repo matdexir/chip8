@@ -8,6 +8,7 @@ pub enum DebugAction {
     ShowRegisters,
     ShowMemory(u16, usize),
     ShowBreakpoints,
+    Help,
 }
 
 pub struct Debugger {
@@ -107,7 +108,7 @@ impl Debugger {
         println!("  info memory <addr> <len>     - Dump memory");
         println!("  info breakpoints | i b       - List breakpoints");
         println!("  quit | q                     - Quit debugger");
-        Ok(DebugAction::Continue)
+        Ok(DebugAction::Help)
     }
 
     pub fn show_registers(&self, cpu: &CpuState) {
