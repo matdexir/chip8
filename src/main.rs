@@ -1,4 +1,5 @@
 mod conf;
+mod debugger;
 mod extensions;
 mod superchip;
 mod vm;
@@ -6,9 +7,15 @@ mod vm;
 use anyhow::{Context, Result};
 use clap::Parser;
 use raylib::prelude::*;
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, Read, Write},
+    path::PathBuf,
+};
 
 use crate::conf::{HI_RES_HEIGHT, HI_RES_WIDTH};
+use crate::debugger::{DebugAction, Debugger};
 use crate::extensions::Extension;
 use crate::superchip::SuperChip8;
 use crate::vm::Chip8VM;
@@ -29,6 +36,8 @@ struct Cli {
     #[arg(short = 'x', long)]
     enable_xochip: bool,
     */
+    #[arg(short = 'd', long)]
+    debug: bool,
 }
 
 fn main() {
@@ -40,8 +49,119 @@ fn main() {
     }
 }
 
+fn run_debugger_loop(
+    rl: &mut RaylibHandle,
+    thread: &RaylibThread,
+    chip8: &mut Chip8VM,
+    debugger: &mut Debugger,
+    paused: &mut bool,
+    beep: &raylib::core::audio::Sound,
+    _keytobtn: &HashMap<KeyboardKey, u8>,
+    window_dims: (i32, i32, i32),
+) -> Result<()> {
+    let stdin = std::io::stdin();
+    let mut line = String::new();
+
+    loop {
+        print!("(chip8) ");
+        std::io::stdout().flush()?;
+
+        line.clear();
+        stdin.lock().read_line(&mut line)?;
+
+        match debugger.parse_and_execute(&line, chip8.get_state()) {
+            Ok(DebugAction::Quit) => {
+                println!("Exiting debugger...");
+                std::process::exit(0);
+            }
+            Ok(DebugAction::Step) => {
+                chip8.tick()?;
+                let (_, st) = chip8.tick_timers();
+                if st == 1 {
+                    beep.play();
+                }
+                let state = chip8.get_state();
+                println!(
+                    "PC: 0x{:04X}, Opcode: 0x{:04X}",
+                    state.pc,
+                    fetch_op(chip8, state)
+                );
+                render_screen(rl, thread, chip8, window_dims);
+            }
+            Ok(DebugAction::Continue) => {
+                *paused = false;
+                break;
+            }
+            Ok(DebugAction::ShowRegisters) => {
+                debugger.show_registers(chip8.get_state());
+            }
+            Ok(DebugAction::ShowMemory(addr, len)) => {
+                debugger.show_memory(chip8.get_state(), addr, len);
+            }
+            Ok(DebugAction::ShowBreakpoints) => {
+                debugger.show_breakpoints();
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn fetch_op(_chip8: &Chip8VM, state: &crate::vm::CpuState) -> u16 {
+    let hi = state.memory[state.pc as usize] as u16;
+    let lo = state.memory[(state.pc + 1) as usize] as u16;
+    (hi << 8) | lo
+}
+
+fn render_screen(
+    rl: &mut RaylibHandle,
+    thread: &RaylibThread,
+    chip8: &Chip8VM,
+    window_dims: (i32, i32, i32),
+) {
+    let (window_width, window_height, _scale) = window_dims;
+    let mut d = rl.begin_drawing(&thread);
+    d.clear_background(Color::BLACK);
+
+    let (screen_width, screen_height, screen_buf) = chip8.get_display_config();
+
+    let x_offset = (window_width - (screen_width as i32) * SCALE) / 2;
+    let y_offset = (window_height - (screen_height as i32) * SCALE) / 2;
+
+    for y in 0..screen_height {
+        for x in 0..screen_width {
+            let idx = x + y * HI_RES_WIDTH;
+
+            if screen_buf[idx] {
+                d.draw_rectangle(
+                    x_offset + (x as i32) * SCALE,
+                    y_offset + (y as i32) * SCALE,
+                    SCALE,
+                    SCALE,
+                    Color::GREEN,
+                );
+            }
+        }
+    }
+
+    let screen_rect = Rectangle::new(
+        x_offset as f32,
+        y_offset as f32,
+        (screen_width as i32 * SCALE) as f32,
+        (screen_height as i32 * SCALE) as f32,
+    );
+
+    d.draw_rectangle_lines_ex(screen_rect, 2.0, Color::GRAY);
+}
+
 // The run function now accepts the validated ROM path as an argument.
 fn run(cli: &Cli) -> Result<()> {
+    let mut debugger = Debugger::new();
+    let mut paused = cli.debug;
+
     let keytobtn: HashMap<KeyboardKey, u8> = HashMap::from([
         (KeyboardKey::KEY_ONE, 0x1),
         (KeyboardKey::KEY_TWO, 0x2),
@@ -95,6 +215,39 @@ fn run(cli: &Cli) -> Result<()> {
 
     // Main emulation loop
     while !rl.window_should_close() {
+        if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) || rl.is_key_pressed(KeyboardKey::KEY_F1) {
+            paused = !paused;
+            if paused {
+                println!("Debugger paused. Type 'help' for commands.");
+            }
+        }
+
+        if paused {
+            let state = chip8.get_state();
+            if debugger.should_break(state.pc) {
+                println!("Breakpoint hit at 0x{:04X}", state.pc);
+            }
+
+            run_debugger_loop(
+                &mut rl,
+                &thread,
+                &mut chip8,
+                &mut debugger,
+                &mut paused,
+                &beep,
+                &keytobtn,
+                (window_width, window_height, SCALE),
+            )?;
+            continue;
+        }
+
+        let state = chip8.get_state();
+        if debugger.should_break(state.pc) {
+            paused = true;
+            println!("Breakpoint hit at 0x{:04X}", state.pc);
+            continue;
+        }
+
         // Input handling
         for (keyboard_key, chip8_key) in &keytobtn {
             let key_index = *chip8_key as usize;
@@ -121,39 +274,12 @@ fn run(cli: &Cli) -> Result<()> {
             beep.play();
         }
 
-        // Drawing
-        let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::BLACK);
-
-        let (screen_width, screen_height, screen_buf) = chip8.get_display_config();
-
-        let x_offset = (window_width - (screen_width as i32) * SCALE) / 2;
-        let y_offset = (window_height - (screen_height as i32) * SCALE) / 2;
-
-        for y in 0..screen_height {
-            for x in 0..screen_width {
-                let idx = x + y * HI_RES_WIDTH;
-
-                if screen_buf[idx] {
-                    d.draw_rectangle(
-                        x_offset + (x as i32) * SCALE,
-                        y_offset + (y as i32) * SCALE,
-                        SCALE,
-                        SCALE,
-                        Color::GREEN,
-                    );
-                }
-            }
-        }
-
-        let screen_rect = Rectangle::new(
-            x_offset as f32,
-            y_offset as f32,
-            (screen_width as i32 * SCALE) as f32,
-            (screen_height as i32 * SCALE) as f32,
+        render_screen(
+            &mut rl,
+            &thread,
+            &chip8,
+            (window_width, window_height, SCALE),
         );
-
-        d.draw_rectangle_lines_ex(screen_rect, 2.0, Color::GRAY);
     }
 
     Ok(())

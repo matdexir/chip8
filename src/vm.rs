@@ -11,20 +11,20 @@ use rand::random;
 const MAX_SCREEN_SIZE: usize = HI_RES_HEIGHT * HI_RES_WIDTH;
 
 pub struct CpuState {
-    pc: u16,
-    memory: [u8; RAM_SIZE],
+    pub pc: u16,
+    pub memory: [u8; RAM_SIZE],
     screen: [bool; MAX_SCREEN_SIZE],
-    current_width: usize,
-    current_height: usize,
-    registers: [u8; REGISTER_COUNT],
-    i_register: u16,
-    sp: u16,
-    stack: [u16; STACK_SIZE],
+    pub current_width: usize,
+    pub current_height: usize,
+    pub registers: [u8; REGISTER_COUNT],
+    pub i_register: u16,
+    pub sp: u16,
+    pub stack: [u16; STACK_SIZE],
     keys: [bool; KEYS_COUNT],
-    delay_timer: u8,
-    sound_timer: u8,
+    pub delay_timer: u8,
+    pub sound_timer: u8,
     // S-CHIP specific
-    rpl_flags: [u8; FLAG_COUNT],
+    pub rpl_flags: [u8; FLAG_COUNT],
 }
 
 impl Default for CpuState {
@@ -159,6 +159,10 @@ impl Chip8VM {
         }
         self.cpu.keys[idx] = pressed;
         Ok(())
+    }
+
+    pub fn get_state(&self) -> &CpuState {
+        &self.cpu
     }
 
     fn fetch(&mut self) -> u16 {
