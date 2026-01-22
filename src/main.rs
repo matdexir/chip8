@@ -216,7 +216,7 @@ fn run(cli: &Cli) -> Result<()> {
 
     // Main emulation loop
     while !rl.window_should_close() {
-        if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) || rl.is_key_pressed(KeyboardKey::KEY_F1) {
+        if rl.is_key_pressed(KeyboardKey::KEY_F1) {
             paused = !paused;
             if paused {
                 println!("Debugger paused. Type 'help' for commands.");
