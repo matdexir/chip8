@@ -1,0 +1,15 @@
+# Build configuration
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
+
+# Rust configuration
+build --@rules_rust//rust/toolchain/channel=stable
+
+# Cache directory
+build --disk_cache=.bazel-cache
+
+# Verbose output for debugging
+# build --verbose_failures
+
+# Test configuration
+test --test_output=errors

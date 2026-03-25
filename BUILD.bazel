@@ -1,0 +1,31 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_binary")
+load("@crate//:defs.bzl", "all_crate_deps")
+
+rust_library(
+    name = "chip8",
+    srcs = [
+        "src/lib.rs",
+        "src/conf.rs",
+        "src/debugger.rs",
+        "src/extensions.rs",
+        "src/superchip.rs",
+        "src/vm.rs",
+    ],
+    deps = all_crate_deps(normal = True),
+    visibility = ["//visibility:public"],
+    edition = "2021",
+)
+
+rust_binary(
+    name = "chip8_bin",
+    srcs = [
+        "src/main.rs",
+        "src/conf.rs",
+        "src/debugger.rs",
+        "src/extensions.rs",
+        "src/superchip.rs",
+        "src/vm.rs",
+    ],
+    deps = all_crate_deps(normal = True),
+    edition = "2021",
+)
