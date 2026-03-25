@@ -1,1 +1,9 @@
 /target
+
+# Bazel
+/bazel-*
+/.bazel-cache
+/.bazel-cache/
+/bazel-out
+/bazel-testlogs
+/bazel-bin

@@ -1,0 +1,26 @@
+module(
+    name = "chip8",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "rules_rust", version = "0.69.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+
+# Rust toolchain configuration
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+)
+use_repo(rust, "rust_toolchains")
+
+# Crate universe for managing Rust dependencies
+crate_universe = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate_universe.from_cargo(
+    name = "crate",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = ["//:Cargo.toml"],
+)
+use_repo(crate_universe, "crate")
+
+# Register the toolchains
+register_toolchains("@rust_toolchains//:all")
